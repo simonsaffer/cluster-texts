@@ -1,3 +1,4 @@
+import java.io.InputStream
 import java.util.Properties
 
 import edu.stanford.nlp.ling.CoreAnnotations._
@@ -13,6 +14,8 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 object Main {
+
+  val numeric_conditioner = 1000
 
   // http://nlp.stanford.edu/software/spanish-faq.shtml
   val posTags = Array(
@@ -32,7 +35,8 @@ object Main {
     "w", // Dates
     "z0", "zm", "zu", // Numerals
     "word", // Other
-    "vmmp000", "va00000", "vsmp000", "359000", "aqs000", "vmim000", "vmi0000", "vmms000", "vm0p000", "ap0000", "zp", "vq00000", "vm00000", "do0000", "vs00000" // Not documented POS
+    "359000"
+    //"vmmp000", "va00000", "vsmp000", "359000", "aqs000", "vmim000", "vmi0000", "vmms000", "vm0p000", "ap0000", "zp", "vq00000", "vm00000", "do0000", "vs00000" // Not documented POS
   )
   val posToIndexMap = posTags.zipWithIndex.toMap
 
@@ -44,7 +48,7 @@ object Main {
 
     val indicesWithNormalizedFrequencies = freqMap.toSeq.map {
       case (pos, freq) => {
-        (posToIndexMap(pos), freq.toDouble / totFreq)
+        (posToIndexMap(pos), (freq*numeric_conditioner).toDouble / totFreq)
       }
     }
 
@@ -58,40 +62,30 @@ object Main {
     val allBooks = sc.binaryFiles("src/main/resources/*")
 
     val allPOSFeatureVectorsAndBookTitles = allBooks.map {
-      case (file, dataStream) => {
+      case (file, dataStream) if file.endsWith("epub") => {
         val epubReader = new EpubReader()
         val book = epubReader.readEpub(dataStream.open())
-        val props = new Properties()
-        props.setProperty("annotators", "tokenize, ssplit, pos")
-        props.setProperty("tokenize.language", "es")
-        props.setProperty("language", "spanish")
-        props.setProperty("pos.model", "edu/stanford/nlp/models/pos-tagger/spanish/spanish-distsim.tagger")
-        val pipeline = new StanfordCoreNLP(props)
+
+        val pipeline: StanfordCoreNLP = getStanfordNLPParser
 
         val freqMap: mutable.Map[String, Int] = mutable.Map.empty
 
         val textInBook: Seq[String] = getTextInBook(book)
         textInBook.foreach { text =>
-          val doc = new Annotation(text)
-          pipeline.annotate(doc)
-
-          val sentences = doc.get(classOf[SentencesAnnotation]).asScala
-
-          sentences.foreach(sentence => {
-            sentence.get(classOf[TokensAnnotation]).asScala.foreach(token => {
-              val pos = token.get(classOf[PartOfSpeechAnnotation])
-              if (!posToIndexMap.get(pos).isDefined) println(s"Token undefined: ${token.toString}, pos: $pos")
-              freqMap.synchronized {
-                val f = freqMap.getOrElse(pos, 0)
-                freqMap.put(pos, f+1)
-              }
-            })
-          })
+          updateWithWordsFromText(pipeline, text, freqMap)
         }
 
         val freqVector = convertToVector(freqMap)
         println(s"Frequencies from ${book.getTitle}", freqVector)
         (book.getTitle, freqVector)
+      }
+      case (file, dataStream) if file.endsWith("html")=> {
+        val pipeline: StanfordCoreNLP = getStanfordNLPParser
+        val freqMap: mutable.Map[String, Int] = mutable.Map.empty
+        updateWithWordsFromText(pipeline, getTextFromHTML(file, dataStream.open()), freqMap)
+        val freqVector = convertToVector(freqMap)
+        println(s"Frequencies from ${file}", freqVector)
+        (file, freqVector)
       }
     }
 
@@ -99,8 +93,8 @@ object Main {
 
     val allPOSFeatureVectors = allPOSFeatureVectorsAndBookTitles.map(_._2)
 
-    val numClusters = 3
-    val numIterations = 10
+    val numClusters = 4
+    val numIterations = 20
     val clusters = KMeans.train(allPOSFeatureVectors, numClusters, numIterations)
 
     println(clusters)
@@ -120,6 +114,34 @@ object Main {
 
   }
 
+  private def getStanfordNLPParser = {
+    val props = new Properties()
+    props.setProperty("annotators", "tokenize, ssplit, pos")
+    props.setProperty("tokenize.language", "es")
+    props.setProperty("language", "spanish")
+    props.setProperty("pos.model", "edu/stanford/nlp/models/pos-tagger/spanish/spanish-distsim.tagger")
+    val pipeline = new StanfordCoreNLP(props)
+    pipeline
+  }
+
+  private def updateWithWordsFromText(pipeline: StanfordCoreNLP, text: String, freqMap: mutable.Map[String, Int]) = {
+    val doc = new Annotation(text)
+    pipeline.annotate(doc)
+
+    val sentences = doc.get(classOf[SentencesAnnotation]).asScala
+
+    sentences.foreach(sentence => {
+      sentence.get(classOf[TokensAnnotation]).asScala.foreach(token => {
+        val pos = token.get(classOf[PartOfSpeechAnnotation])
+        if (!posToIndexMap.get(pos).isDefined) println(s"Token undefined: ${token.toString}, pos: $pos")
+        freqMap.synchronized {
+          val f = freqMap.getOrElse(pos, 0)
+          freqMap.put(pos, f + 1)
+        }
+      })
+    })
+  }
+
   private def getTextInBook(book: Book): Seq[String] = {
     book.getContents.listIterator.asScala.toSeq
       .filterNot(resource => resource.getId.equalsIgnoreCase("cover") || resource.getId.equalsIgnoreCase("tiltlepage"))
@@ -129,4 +151,11 @@ object Main {
       parsedPage.body().text()
     })
   }
+
+  private def getTextFromHTML(file: String, inputStream: InputStream): String = {
+    val parsedPage = Jsoup.parse(inputStream, "UTF-8", file)
+    //text.replaceAll("[\\.\",;¿?¡!\\-—*:<>«»'\\[\\]+\\(\\)“”’‑]|\\s", "").toLowerCase
+    parsedPage.body().text()
+  }
+
 }

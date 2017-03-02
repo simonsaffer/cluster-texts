@@ -1,4 +1,4 @@
-name := "libros"
+name := "cluster-texts"
 
 version := "1.0"
 
@@ -12,7 +12,8 @@ libraryDependencies += "org.jsoup" % "jsoup" % "1.10.2"
 
 libraryDependencies += "org.apache.spark" % "spark-mllib_2.11" % "2.1.0"
 
-libraryDependencies += "edu.stanford.nlp" % "stanford-parser" % "3.7.0"
-libraryDependencies += "edu.stanford.nlp" % "stanford-corenlp" % "3.7.0"
-libraryDependencies += "edu.stanford.nlp" % "stanford-corenlp" % "3.7.0" classifier "models"
-libraryDependencies += "edu.stanford.nlp" % "stanford-corenlp" % "3.7.0" classifier "models-spanish"
+val STANFORD_NLP_VERSION = "3.6.0"
+libraryDependencies += "edu.stanford.nlp" % "stanford-parser" % STANFORD_NLP_VERSION
+libraryDependencies += "edu.stanford.nlp" % "stanford-corenlp" % STANFORD_NLP_VERSION
+libraryDependencies += "edu.stanford.nlp" % "stanford-corenlp" % STANFORD_NLP_VERSION classifier "models"
+libraryDependencies += "edu.stanford.nlp" % "stanford-corenlp" % STANFORD_NLP_VERSION classifier "models-spanish"
