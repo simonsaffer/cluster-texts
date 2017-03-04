@@ -1,4 +1,4 @@
-import java.io.InputStream
+import java.io.{InputStream, PrintWriter}
 import java.util.Properties
 
 import edu.stanford.nlp.ling.CoreAnnotations._
@@ -15,7 +15,7 @@ import scala.collection.mutable
 
 object Main {
 
-  val numeric_conditioner = 1000
+  val NUMERIC_CONDITIONER = 100
 
   // http://nlp.stanford.edu/software/spanish-faq.shtml
   val posTags = Array(
@@ -48,7 +48,7 @@ object Main {
 
     val indicesWithNormalizedFrequencies = freqMap.toSeq.map {
       case (pos, freq) => {
-        (posToIndexMap(pos), (freq*numeric_conditioner).toDouble / totFreq)
+        (posToIndexMap(pos), (freq * NUMERIC_CONDITIONER).toDouble / totFreq)
       }
     }
 
@@ -76,7 +76,6 @@ object Main {
         }
 
         val freqVector = convertToVector(freqMap)
-        println(s"Frequencies from ${book.getTitle}", freqVector)
         (book.getTitle, freqVector)
       }
       case (file, dataStream) if file.endsWith("html")=> {
@@ -84,7 +83,6 @@ object Main {
         val freqMap: mutable.Map[String, Int] = mutable.Map.empty
         updateWithWordsFromText(pipeline, getTextFromHTML(file, dataStream.open()), freqMap)
         val freqVector = convertToVector(freqMap)
-        println(s"Frequencies from ${file}", freqVector)
         (file, freqVector)
       }
     }
@@ -94,22 +92,27 @@ object Main {
     val allPOSFeatureVectors = allPOSFeatureVectorsAndBookTitles.map(_._2)
 
     val numClusters = 4
-    val numIterations = 20
+    val numIterations = 100
     val clusters = KMeans.train(allPOSFeatureVectors, numClusters, numIterations)
-
-    println(clusters)
-
-    allPOSFeatureVectorsAndBookTitles.foreach {
-      case (title, vector) =>
-        val cluster = clusters.predict(vector)
-        println(s"Title: $title, Group: $cluster")
-    }
 
     val WSSSE = clusters.computeCost(allPOSFeatureVectors)
     println("Within Set Sum of Squared Errors = " + WSSSE)
 
+    val pw = new PrintWriter("text-groups.csv")
 
+    pw.print("Title,")
+    pw.print("Group,")
+    pw.println(posTags.mkString(","))
 
+    allPOSFeatureVectorsAndBookTitles.collect.foreach {
+      case (title, vector) =>
+        val cluster = clusters.predict(vector)
+
+        val row: Array[String] = Array(title.replace(",", ""), cluster.toString) ++ vector.toArray.map(d => Math.round(d).toInt.toString)
+        pw.println(row.mkString(","))
+    }
+
+    pw.close()
     sc.stop()
 
   }
@@ -147,14 +150,12 @@ object Main {
       .filterNot(resource => resource.getId.equalsIgnoreCase("cover") || resource.getId.equalsIgnoreCase("tiltlepage"))
       .map(resource => {
       val parsedPage = Jsoup.parse(resource.getInputStream, resource.getInputEncoding, resource.getHref)
-      //text.replaceAll("[\\.\",;¿?¡!\\-—*:<>«»'\\[\\]+\\(\\)“”’‑]|\\s", "").toLowerCase
       parsedPage.body().text()
     })
   }
 
   private def getTextFromHTML(file: String, inputStream: InputStream): String = {
     val parsedPage = Jsoup.parse(inputStream, "UTF-8", file)
-    //text.replaceAll("[\\.\",;¿?¡!\\-—*:<>«»'\\[\\]+\\(\\)“”’‑]|\\s", "").toLowerCase
     parsedPage.body().text()
   }
 
