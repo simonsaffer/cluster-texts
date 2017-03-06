@@ -17,3 +17,6 @@ libraryDependencies += "edu.stanford.nlp" % "stanford-parser" % STANFORD_NLP_VER
 libraryDependencies += "edu.stanford.nlp" % "stanford-corenlp" % STANFORD_NLP_VERSION
 libraryDependencies += "edu.stanford.nlp" % "stanford-corenlp" % STANFORD_NLP_VERSION classifier "models"
 libraryDependencies += "edu.stanford.nlp" % "stanford-corenlp" % STANFORD_NLP_VERSION classifier "models-spanish"
+
+// Test
+libraryDependencies += "org.specs2" % "specs2_2.11" % "3.7"
