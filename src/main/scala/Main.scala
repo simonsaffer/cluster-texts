@@ -29,7 +29,7 @@ object Main {
 
     val conf = new SparkConf().setAppName("Analisis de gramatica").setMaster("local[4]")
     val sc = new SparkContext(conf)
-    val allBooks = sc.binaryFiles("src/main/resources/x.html")
+    val allBooks = sc.binaryFiles("src/main/resources/*")
 
     val allPOSFeatureVectorsAndBookTitles = allBooks.map {
       case (file, dataStream) if file.endsWith("epub") => {
@@ -52,12 +52,18 @@ object Main {
 
     val allPOSFeatureVectors = allPOSFeatureVectorsAndBookTitles.map(_._2)
 
-    val numClusters = 4
-    val numIterations = 100
-    val clusters = KMeans.train(allPOSFeatureVectors, numClusters, numIterations)
+    val clustersAndErrors = for(i <- 2 to 5) yield {
 
-    val WSSSE = clusters.computeCost(allPOSFeatureVectors)
-    println("Within Set Sum of Squared Errors = " + WSSSE)
+      val numIterations = 100
+      val clusters = KMeans.train(allPOSFeatureVectors, i, numIterations)
+
+      val WSSSE = clusters.computeCost(allPOSFeatureVectors)
+      println(s"Error with $i clusters: $WSSSE")
+
+      (clusters, WSSSE)
+    }
+
+    val clusters = clustersAndErrors.minBy(_._2)._1
 
     val pw = new PrintWriter("text-groups.csv")
 
